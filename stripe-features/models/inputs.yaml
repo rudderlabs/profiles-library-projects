@@ -1,0 +1,56 @@
+# This is a sample file, for detailed reference see: https://rudderlabs.github.io/pywht/
+inputs:
+  - name: stripeCustomers
+    table: analytics_db.data_apps_simulated_stripe.stripe_customers
+    timestamp_col: timestamp
+    ids:
+      - sql: "customers_id"
+        type: customer_id
+  - name: stripeCharges
+    table: analytics_db.data_apps_simulated_stripe.stripe_charges
+    timestamp_col: created
+    ids:
+      - sql: "customer"
+        type: customer_id
+      - sql: "invoice"
+        type: invoice_id
+      - sql: "charges_id"
+        type: charge_id
+      - sql: "balance_transaction"
+        type: balance_transaction_id
+  - name: stripeInvoices
+    table: analytics_db.data_apps_simulated_stripe.stripe_invoices
+    timestamp_col: to_timestamp(created)
+    ids:
+      - sql: "invoices_id"
+        type: invoice_id
+      - sql: "customer"
+        type: customer_id
+  - name: stripeBalanceHistory
+    table: analytics_db.data_apps_simulated_stripe.stripe_balance_history
+    timestamp_col: created
+    ids:
+      - sql: "id"
+        type: balance_transaction_id
+  - name: stripeSubscriptions
+    table: analytics_db.data_apps_simulated_stripe.stripe_subscriptions
+    timestamp_col: created
+    ids:
+      - sql: "subscriptions_id"
+        type: subscription_id
+      - sql: "customer"
+        type: customer_id
+  - name: stripeRefunds
+    table: analytics_db.data_apps_simulated_stripe.stripe_refunds
+    timestamp_col: created
+    ids:
+      - sql: "charge"
+        type: charge_id
+      - sql: "balance_transaction"
+        type: balance_transaction_id
+  - name: stripeInvoicesView
+    view: ANALYTICS_DB.DATA_APPS_SIMULATED_STRIPE.STG_INVOICES_DATA
+    timestamp_col: invoice_created_timestamp
+    ids: 
+      - sql: "customer"
+        type: customer_id

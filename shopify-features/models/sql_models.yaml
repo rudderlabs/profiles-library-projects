@@ -1,0 +1,226 @@
+models:  
+  - name: rsCartCreateUnionCartUpdate
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with CartCreate = this.DeRef("inputs/rsCartCreate") CartUpdate = this.DeRef("inputs/rsCartUpdate") %}
+            select anonymous_id,timestamp,token from {{CartCreate}}
+            union all 
+            select anonymous_id,timestamp,token from {{CartUpdate}}
+        {% endwith %}
+      ids:
+    
+        - select: "anonymous_id"
+          type: anonymous_id
+          entity: user
+
+  - name: rsSessionTable
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with SessionFeature = this.DeRef("models/shopify_session_features")%}
+            select * from {{SessionFeature}}
+        {% endwith %}
+      ids:
+    
+        - select: "user_id"
+          type: user_id
+          entity: user
+        - select: "anonymous_id"
+          type: anonymous_id
+          entity: user
+    
+  - name: rsItemsPurchasedEverSku
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with OrderCreated = this.DeRef("inputs/rsOrderCreated") %}
+          select t.value['sku'] as SKU,products,token,ANONYMOUS_ID,USER_ID,TIMESTAMP,order_number,cart_token
+            from (select * from {{OrderCreated}} ), table(flatten(parse_json(products))) t where products is not null
+        {% endwith %}
+  - name: rsItemsPurchasedEverCte
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with sku = this.DeRef("models/rsItemsPurchasedEverSku") %}
+         SELECT * , row_number() OVER (PARTITION BY token ORDER BY timestamp DESC) AS rn
+            FROM   {{sku}}
+          {% endwith %}
+  - name: rsItemsPurchasedEver
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with cte = this.DeRef("models/rsItemsPurchasedEverCte") %}
+    
+            SELECT *
+            FROM   {{cte}}
+            WHERE  rn = 1
+            {% endwith %}
+      ids:
+    
+       - select: "user_id"
+         type: user_id
+         entity: user
+       - select: "anonymous_id"
+         type: anonymous_id
+         entity: user
+     
+  - name: rsOrderCreatedOrderCancelled
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with OrderCreated = this.DeRef("inputs/rsOrderCreated") OrderCancelled = this.DeRef("inputs/rsOrderCancelled") %}
+            select 
+            a.ANONYMOUS_ID,
+            a.user_id,
+            a.total_price_usd,
+            a.products,
+            a.payment_details_credit_card_company,
+            a.order_number,
+            a.timestamp,
+            a.cart_token,
+            a.fulfillment_status,
+            a.financial_status,
+            b.anonymous_id as anonymous_id_order_cancelled,
+            b.user_id as user_id_order_cancelled ,
+            b.total_price_usd as total_price_usd_order_cancelled,
+            b.order_number as order_number_order_cancelled,
+            b.financial_status as financial_status_order_cancelled,
+            b.cart_token as cart_token_order_cancelled,
+            b.timestamp as timestamp_order_cancelled,
+            b.products as products_order_cancelled 
+            from {{OrderCreated}} a left join {{OrderCancelled}} b 
+            on a.user_id = b.user_id and a.order_number = b.order_number
+         
+               {% endwith %}
+      ids:
+    
+        - select: "user_id"
+          type: user_id
+          entity: user
+        - select: "anonymous_id"
+          type: anonymous_id
+          entity: user
+        - select: "cart_token"
+          type: cart_token
+          entity: user
+  - name: rsCartLineItems
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with CartUpdate = this.DeRef("inputs/rsCartUpdate") %}
+        
+        SELECT to_char(t.value['brand']) AS brand,
+            t.value['discounted_price']::real AS discounted_price,
+            to_char(t.value['gift_card']) AS gift_card,
+            t.value['grams']::real AS grams,
+            to_char(t.value['id']) AS id,
+            to_char(t.value['key']) AS KEY,
+            t.value['line_price']::real AS line_price,
+            t.value['original_line_price']::real AS original_line_price,
+            t.value['original_price']::real AS original_price,
+            t.value['price']::real AS price,
+            to_char(t.value['product_id']) AS product_id,
+            to_char(t.value['properties']) AS properties,
+            t.value['quantity']::real AS quantity,
+            to_char(t.value['sku']) AS sku,
+            to_char(t.value['taxable']) AS taxable,
+            to_char(t.value['title']) AS title,
+            t.value['total_discount']::real AS total_discount,
+            to_char(t.value['variant']) AS _VARIANT_,
+            products,
+            anonymous_id,timestamp, token
+        FROM
+        (SELECT *
+        FROM
+            (SELECT *,
+                    row_number() over(PARTITION BY anonymous_id, token
+                                                ORDER BY timestamp DESC) AS rn
+            FROM {{CartUpdate}} where products is not null)
+        WHERE rn = 1), table(flatten(parse_json(products))) t
+                {% endwith %}
+      ids:
+        - select: "anonymous_id"
+          type: anonymous_id
+          entity: user
+       
+  - name: rsLastCartStatus
+    model_type: sql_template
+    model_spec:
+      validity_time: 24h # 1 day
+      materialization:
+        output_type: ephemeral
+        run_type: discrete
+      single_sql: |
+        {% with rsCartLineItems = this.DeRef("models/rsCartLineItems") OrderCreated = this.DeRef("inputs/rsOrderCreated") %}
+          select cli.BRAND,
+          cli.DISCOUNTED_PRICE,
+          cli.GIFT_CARD,
+          cli.GRAMS,
+          cli.ID,
+          cli.KEY,
+          cli.LINE_PRICE,
+          cli.ORIGINAL_LINE_PRICE,
+          cli.ORIGINAL_PRICE,
+          cli.PRICE,
+          cli.PRODUCT_ID,
+          cli.PROPERTIES,
+          cli.QUANTITY,
+          cli.SKU,
+          cli.TAXABLE,
+          cli.TITLE,
+          cli.TOTAL_DISCOUNT,
+          cli._VARIANT_,
+          cli.PRODUCTS,
+          cli.ANONYMOUS_ID,
+          cli.TIMESTAMP,
+          cli.TOKEN,
+          oc.ANONYMOUS_ID as Order_Created_Anonymous_ID,
+          oc.USER_ID,
+          oc.TOTAL_PRICE_USD,
+          oc.PRODUCTS as order_created_products,
+          oc.PAYMENT_DETAILS_CREDIT_CARD_COMPANY,
+          oc.ORDER_NUMBER,
+          oc.TIMESTAMP as order_created_timestamp,
+          oc.CART_TOKEN,
+          oc.FULFILLMENT_STATUS,
+          oc.FINANCIAL_STATUS
+          from {{rsCartLineItems}} cli
+          left outer join {{OrderCreated}} oc on cli.token = oc.cart_token
+        {% endwith %}
+      ids:
+    
+       - select: "user_id"
+         type: user_id
+         entity: user
+       - select: "anonymous_id"
+         type: anonymous_id
+         entity: user
