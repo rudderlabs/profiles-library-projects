@@ -1,0 +1,12 @@
+[submodule "rudderstack-profiles-base-features"]
+	path = rudderstack-profiles-base-features
+	url = git@github.com:rudderlabs/rudderstack-profiles-base-features.git
+[submodule "rudderstack-profiles-shopify-features"]
+	path = rudderstack-profiles-shopify-features
+	url = git@github.com:rudderlabs/rudderstack-profiles-shopify-features.git
+[submodule "rudderstack-profiles-stripe-features"]
+	path = rudderstack-profiles-stripe-features
+	url = git@github.com:rudderlabs/rudderstack-profiles-stripe-features.git
+[submodule "rudderstack-profiles-ecommerce-features"]
+	path = rudderstack-profiles-ecommerce-features
+	url = git@github.com:rudderlabs/rudderstack-profiles-ecommerce-features.git
